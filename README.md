@@ -11,7 +11,7 @@ Live Deployment: https://urban-smart-parking-system.onrender.com
 - Reja Fairooz - B240281CS
 - Amil K - B240136CS
 - Ronn Boban - B240286CS
-- Kona Bhuvaneswar Reddy
+- Kona Bhuvaneswar Reddy - B240214CS
 
 ## Project Overview
 
