@@ -3,14 +3,96 @@ requireAuth('admin');
 // Tab Switching Logic
 window.switchTab = (tabName) => {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.admin-nav button').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
     
     document.getElementById(`tab-${tabName}`).classList.add('active');
     document.getElementById(`nav-btn-${tabName}`).classList.add('active');
 
+    if (tabName === 'dashboard') loadDashboard();
     if (tabName === 'users') loadUsers();
     if (tabName === 'lots') loadLots();
     if (tabName === 'sessions') loadSessions();
+    if (tabName === 'reports') loadReports();
+};
+
+// ======== DASHBOARD ========
+async function loadDashboard() {
+    try {
+        const [lots, users, sessions] = await Promise.all([
+            apiCall('/lots'),
+            apiCall('/admin/users'),
+            apiCall('/admin/sessions')
+        ]);
+
+        // Calculate metrics
+        let totalSlots = 0;
+        let availableSlots = 0;
+        let occupiedSlots = 0;
+
+        lots.forEach(lot => {
+            totalSlots += lot.total;
+            availableSlots += lot.available_slots;
+            occupiedSlots += (lot.total - lot.available_slots);
+        });
+
+        const activeSessions = sessions.filter(s => s.status === 'active').length;
+        const totalRevenue = sessions.reduce((sum, s) => sum + (parseFloat(s.fee_charged) || 0), 0);
+
+        // Update metric cards
+        document.getElementById('metric-total-slots').textContent = totalSlots;
+        document.getElementById('metric-available').textContent = availableSlots;
+        document.getElementById('metric-occupied').textContent = occupiedSlots;
+        document.getElementById('metric-active-sessions').textContent = activeSessions;
+        document.getElementById('metric-revenue').textContent = '₹' + totalRevenue.toFixed(2);
+        document.getElementById('metric-drivers').textContent = users.length;
+
+        // Update occupancy rate
+        const occupancyRate = totalSlots > 0 ? ((occupiedSlots / totalSlots) * 100).toFixed(0) : 0;
+        document.getElementById('occupancy-fill').style.width = occupancyRate + '%';
+        document.getElementById('occupancy-text').textContent = occupancyRate + '%';
+
+        // System health
+        const healthStatus = occupancyRate < 90 ? 'Operational' : 'High Load';
+        document.getElementById('system-health').textContent = healthStatus;
+
+        // Recent sessions (last 5)
+        const recentSessions = sessions.slice(0, 5);
+        const tbody = document.getElementById('recent-sessions-tbody');
+        if (recentSessions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 2rem;">No sessions recorded yet</td></tr>';
+        } else {
+            tbody.innerHTML = recentSessions.map(s => {
+                const statusBadge = s.status === 'active' 
+                    ? '<span style="background:rgba(250, 204, 21, 0.2); color:#facc15; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">ACTIVE</span>'
+                    : '<span style="background:rgba(34, 197, 94, 0.2); color:#4ade80; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">COMPLETED</span>';
+                
+                return `
+                <tr>
+                    <td style="font-weight: bold;">${s.username}</td>
+                    <td>${s.license_plate}</td>
+                    <td>${s.lot_name}</td>
+                    <td style="font-size: 0.9rem;">${new Date(s.entry_time).toLocaleString()}</td>
+                    <td>${statusBadge}</td>
+                </tr>
+            `}).join('');
+        }
+    } catch (e) {
+        console.error('Error loading dashboard', e);
+        await showAlert('Error loading dashboard: ' + e.message);
+    }
+}
+
+// Auto-refresh dashboard every 30 seconds
+setInterval(() => {
+    const activeTab = document.querySelector('.tab-content.active');
+    if (activeTab && activeTab.id === 'tab-dashboard') {
+        loadDashboard();
+    }
+}, 30000);
+
+window.refreshDashboard = () => {
+    loadDashboard();
+    showAlert('Dashboard refreshed!');
 };
 
 async function loadUsers() {
@@ -89,7 +171,7 @@ async function loadLots() {
                         const entryTime = veh && veh.entry_time ? new Date(veh.entry_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown Time';
                         userContext = `
                             <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 0.8rem;">
-                                <div style="color: #93c5fd; font-weight: bold; margin-bottom: 2px;">👤 ${usr.username}</div>
+                                <div style="color: #93c5fd; font-weight: bold; margin-bottom: 2px;">U: ${usr.username}</div>
                                 <div style="color: var(--text-muted); display: flex; justify-content: space-between;">
                                     <span>${veh ? veh.license_plate : 'Unknown'}</span>
                                     <span style="color: #facc15;">Since ${entryTime}</span>
@@ -185,6 +267,92 @@ async function loadSessions() {
     }
 }
 
+// ======== REPORTS ========
+async function loadReports() {
+    try {
+        const [lots, users, sessions] = await Promise.all([
+            apiCall('/lots'),
+            apiCall('/admin/users'),
+            apiCall('/admin/sessions')
+        ]);
+
+        // Calculate metrics
+        let totalSlots = 0;
+        let totalOccupied = 0;
+        
+        lots.forEach(lot => {
+            totalSlots += lot.total;
+            totalOccupied += (lot.total - lot.available_slots);
+        });
+
+        // Sessions analytics
+        const activeSessions = sessions.filter(s => s.status === 'active').length;
+        const completedSessions = sessions.filter(s => s.status === 'completed').length;
+        const todaySessions = sessions.filter(s => new Date(s.entry_time).toDateString() === new Date().toDateString());
+        const todayRevenue = todaySessions.reduce((sum, s) => sum + (parseFloat(s.fee_charged) || 0), 0);
+        const totalRevenue = sessions.reduce((sum, s) => sum + (parseFloat(s.fee_charged) || 0), 0);
+
+        // Users with active parking
+        const usersWithActiveSessions = new Set(sessions.filter(s => s.status === 'active').map(s => s.user_id)).size;
+
+        // Calculate average occupancy
+        const avgOccupancy = totalSlots > 0 ? ((totalOccupied / totalSlots) * 100).toFixed(1) : 0;
+
+        // Most occupied lot
+        let mostOccupiedLot = 'N/A';
+        if (lots.length > 0) {
+            const lotWithMostOccupied = lots.reduce((max, current) => {
+                const currentOcc = current.total - current.available_slots;
+                const maxOcc = max.total - max.available_slots;
+                return currentOcc > maxOcc ? current : max;
+            });
+            mostOccupiedLot = lotWithMostOccupied.name;
+        }
+
+        // Update report cards
+        document.getElementById('report-active').textContent = activeSessions;
+        document.getElementById('report-completed-today').textContent = todaySessions.filter(s => s.status === 'completed').length;
+        document.getElementById('report-revenue-today').textContent = '₹' + todayRevenue.toFixed(2);
+        document.getElementById('report-total-lots').textContent = lots.length;
+        document.getElementById('report-avg-occupancy').textContent = avgOccupancy + '%';
+        document.getElementById('report-most-occupied').textContent = mostOccupiedLot;
+        document.getElementById('report-total-drivers').textContent = users.length;
+        document.getElementById('report-active-parked').textContent = usersWithActiveSessions;
+        
+        // Calculate total due fees
+        const totalDueFees = users.reduce((sum, u) => sum + (parseFloat(u.due_fees) || 0), 0);
+        document.getElementById('report-due-fees').textContent = '₹' + totalDueFees.toFixed(2);
+
+        // Populate detailed session table
+        const tbody = document.querySelector('#reports-table tbody');
+        if (sessions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding: 2rem;">No session records available</td></tr>';
+        } else {
+            tbody.innerHTML = sessions.map(s => {
+                const entryDate = new Date(s.entry_time).toLocaleDateString();
+                const durationHours = s.duration_hours || '-';
+                const feeAmount = s.fee_charged ? '₹' + parseFloat(s.fee_charged).toFixed(2) : '-';
+                const statusBadge = s.status === 'active' 
+                    ? '<span style="background:rgba(250, 204, 21, 0.2); color:#facc15; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">ACTIVE</span>'
+                    : '<span style="background:rgba(34, 197, 94, 0.2); color:#4ade80; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">DONE</span>';
+
+                return `
+                <tr>
+                    <td style="font-size: 0.9rem;">${entryDate}</td>
+                    <td>${s.username}</td>
+                    <td style="font-family: monospace; font-size: 0.9rem;">${s.license_plate}</td>
+                    <td>${durationHours}</td>
+                    <td style="color: #22c55e; font-weight: bold;">${feeAmount}</td>
+                    <td>${statusBadge}</td>
+                </tr>
+            `}).join('');
+        }
+    } catch (e) {
+        console.error('Error loading reports', e);
+        await showAlert('Error loading reports: ' + e.message);
+    }
+}
+
 window.viewSlotDetails = async (slotId) => {
     const sInfo = window[`slotInfo_${slotId}`];
     if (!sInfo || !sInfo.driver_id) return;
@@ -266,22 +434,18 @@ document.getElementById('create-lot-form').onsubmit = async (e) => {
     const a = document.getElementById('lot-address').value;
     const s = parseInt(document.getElementById('lot-slots').value);
     const p = parseFloat(document.getElementById('lot-price').value);
-    
-    const errEl = document.getElementById('admin-error');
-    const sucEl = document.getElementById('admin-success');
-    errEl.innerText = ''; sucEl.innerText = '';
 
     try {
         const res = await apiCall('/lots', 'POST', { name: n, address: a, total_slots: s, price_per_hour: p });
-        sucEl.innerText = res.message;
+        await showAlert('Parking lot created successfully!');
         document.getElementById('create-lot-form').reset();
         loadLots();
     } catch (err) {
-        errEl.innerText = err.message;
+        await showAlert('Error creating lot: ' + err.message);
     }
 };
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
-    switchTab('users'); // loads users
+    switchTab('dashboard'); // loads dashboard
 });

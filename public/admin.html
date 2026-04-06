@@ -8,26 +8,169 @@
     <script src="/js/main.js"></script>
     <link rel="stylesheet" href="/css/admin.css">
 </head>
-<body>
-    <div class="container" style="max-width: 1400px;">
-        <header class="dashboard-header animate-slide-up" style="margin-bottom: 1rem;">
-            <div>
-                <h1 style="background: linear-gradient(to right, #3b82f6, #93c5fd); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;">City Planner Admin</h1>
-            </div>
+<body class="admin-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="admin-sidebar">
+        <div class="sidebar-header">
+            <h2>Parking Admin</h2>
+            <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        </div>
+        
+        <nav class="sidebar-menu">
+            <a href="#" onclick="switchTab('dashboard'); return false;" class="sidebar-item active" id="nav-btn-dashboard">
+                <span class="label">Dashboard</span>
+            </a>
+            <a href="#" onclick="switchTab('users'); return false;" class="sidebar-item" id="nav-btn-users">
+                <span class="label">Drivers</span>
+            </a>
+            <a href="#" onclick="switchTab('lots'); return false;" class="sidebar-item" id="nav-btn-lots">
+                <span class="label">Parking Lots</span>
+            </a>
+            <a href="#" onclick="switchTab('sessions'); return false;" class="sidebar-item" id="nav-btn-sessions">
+                <span class="label">Sessions</span>
+            </a>
+            <a href="#" onclick="switchTab('reports'); return false;" class="sidebar-item" id="nav-btn-reports">
+                <span class="label">Reports</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div id="user-info-sidebar" class="user-info"></div>
+            <button onclick="logout()" class="btn-logout">Logout</button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main">
+        <header class="admin-header">
+            <h1 style="background: linear-gradient(to right, #3b82f6, #93c5fd); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Smart Parking System</h1>
             <div id="user-info"></div>
         </header>
 
-        <!-- Top Navigation -->
-        <nav class="admin-nav animate-fade-in">
-            <button class="active" onclick="switchTab('users')" id="nav-btn-users">USERS</button>
-            <button onclick="switchTab('lots')" id="nav-btn-lots">PARKING LOTS</button>
-            <button onclick="switchTab('sessions')" id="nav-btn-sessions">SESSIONS</button>
-        </nav>
+        <div class="content-container">
 
-        <!-- USERS TAB -->
-        <section id="tab-users" class="tab-content active">
+        
+        <!-- DASHBOARD TAB -->
+        <section id="tab-dashboard" class="tab-content active">
+            <div class="dashboard-grid">
+                <!-- Top Row: Key Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <div class="metric-label">Total Slots</div>
+                            <div class="metric-value" id="metric-total-slots">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <div class="metric-label">Available</div>
+                            <div class="metric-value" id="metric-available">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <div class="metric-label">Occupied</div>
+                            <div class="metric-value" id="metric-occupied">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <div class="metric-label">Active Sessions</div>
+                            <div class="metric-value" id="metric-active-sessions">-</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card highlight">
+                        <div class="metric-content">
+                            <div class="metric-label">Total Revenue</div>
+                            <div class="metric-value" id="metric-revenue">₹0</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <div class="metric-label">Registered Drivers</div>
+                            <div class="metric-value" id="metric-drivers">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Status -->
+                <div class="card" style="margin-top: 2rem;">
+                    <h3 style="margin-bottom: 1.5rem;">System Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-label">Occupancy Rate</div>
+                            <div class="status-bar">
+                                <div class="status-fill" id="occupancy-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="status-value" id="occupancy-text">0%</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">System Health</div>
+                            <div class="status-badge" id="system-health">Operational</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="card" style="margin-top: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3>Recent Sessions (Last 5)</h3>
+                        <button class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;" onclick="switchTab('sessions')">View All</button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="fancy-table">
+                            <thead>
+                                <tr>
+                                    <th>Driver</th>
+                                    <th>Vehicle</th>
+                                    <th>Lot</th>
+                                    <th>Entry Time</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-sessions-tbody">
+                                <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card" style="margin-top: 2rem;">
+                    <h3 style="margin-bottom: 1.5rem;">Quick Actions</h3>
+                    <div class="quick-actions">
+                        <button class="action-btn" onclick="switchTab('lots')">
+                            <span>Add Parking Lot</span>
+                        </button>
+                        <button class="action-btn" onclick="switchTab('users')">
+                            <span>Manage Drivers</span>
+                        </button>
+                        <button class="action-btn" onclick="switchTab('sessions')">
+                            <span>View Sessions</span>
+                        </button>
+                        <button class="action-btn" onclick="refreshDashboard()">
+                            <span>Refresh Data</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        
+        <section id="tab-users" class="tab-content">
             <div class="card">
-                <h3 style="font-size: 1.5rem; margin-bottom: 1rem;">Registered Drivers</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 1.5rem;">Registered Drivers</h3>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="user-search" placeholder="Search drivers..." class="search-input" onkeyup="filterUsersTable()">
+                        <button class="btn btn-secondary" onclick="loadUsers()">↻ Refresh</button>
+                    </div>
+                </div>
                 <div style="overflow-x: auto;">
                     <table class="fancy-table" id="users-table">
                         <thead>
@@ -35,6 +178,7 @@
                                 <th>ID</th>
                                 <th>Driver Info</th>
                                 <th>Vehicles / Parking Status</th>
+                                <th>Due Fees</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -53,8 +197,6 @@
                 <div style="display: flex; flex-direction: column; gap: 2rem;">
                     <div class="card text-slate-100">
                         <h3 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Add Parking Lot</h3>
-                        <div id="admin-error" class="error-msg"></div>
-                        <div id="admin-success" class="success-msg"></div>
                         
                         <form id="create-lot-form">
                             <div class="form-group">
@@ -115,7 +257,98 @@
                 </div>
             </div>
         </section>
-    </div>
+
+        <!-- REPORTS TAB -->
+        <section id="tab-reports" class="tab-content">
+            <div class="card">
+                <h3 style="margin-bottom: 1.5rem;">System Reports & Analytics</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                    
+                    <!-- Report Card: Bookings Summary -->
+                    <div class="report-card">
+                        <h4>Bookings Summary</h4>
+                        <div style="margin-top: 1rem;">
+                            <div class="report-stat">
+                                <span>Active Sessions:</span>
+                                <span id="report-active" style="font-weight: bold; color: #facc15;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Completed Today:</span>
+                                <span id="report-completed-today" style="font-weight: bold; color: #22c55e;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Total Revenue Today:</span>
+                                <span id="report-revenue-today" style="font-weight: bold; color: #3b82f6;">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report Card: Lot Efficiency -->
+                    <div class="report-card">
+                        <h4>Lot Efficiency</h4>
+                        <div style="margin-top: 1rem;">
+                            <div class="report-stat">
+                                <span>Total Lots:</span>
+                                <span id="report-total-lots" style="font-weight: bold;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Avg Occupancy:</span>
+                                <span id="report-avg-occupancy" style="font-weight: bold;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Most Occupied:</span>
+                                <span id="report-most-occupied" style="font-weight: bold; color: #ef4444;">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report Card: Driver Insights -->
+                    <div class="report-card">
+                        <h4>Driver Insights</h4>
+                        <div style="margin-top: 1rem;">
+                            <div class="report-stat">
+                                <span>Total Drivers:</span>
+                                <span id="report-total-drivers" style="font-weight: bold;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Active Parked:</span>
+                                <span id="report-active-parked" style="font-weight: bold; color: #93c5fd;">-</span>
+                            </div>
+                            <div class="report-stat">
+                                <span>Due Fees Total:</span>
+                                <span id="report-due-fees" style="font-weight: bold; color: #ef4444;">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Session Log -->
+                <div style="margin-top: 2rem;">
+                    <h4 style="margin-bottom: 1rem;">Session Details (All Records)</h4>
+                    <div style="overflow-x: auto;">
+                        <table class="fancy-table" id="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Driver</th>
+                                    <th>Vehicle</th>
+                                    <th>Duration</th>
+                                    <th>Fee</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        
+        </div>
+    </main>
 
     <script src="/js/admin.js"></script>
 </body>
