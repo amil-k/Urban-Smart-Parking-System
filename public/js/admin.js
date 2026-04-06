@@ -15,12 +15,6 @@ window.switchTab = (tabName) => {
     if (tabName === 'reports') loadReports();
 };
 
-// Toggle sidebar on mobile
-window.toggleSidebar = () => {
-    const sidebar = document.querySelector('.admin-sidebar');
-    sidebar.classList.toggle('open');
-};
-
 // ======== DASHBOARD ========
 async function loadDashboard() {
     try {
@@ -101,8 +95,6 @@ window.refreshDashboard = () => {
     showAlert('Dashboard refreshed!');
 };
 
-
-
 async function loadUsers() {
     try {
         const users = await apiCall('/admin/users');
@@ -127,39 +119,153 @@ async function loadUsers() {
                 }).join('');
                 
             return `
-            <tr class="user-row" data-username="${u.username.toLowerCase()}">
+            <tr>
                 <td style="color:var(--text-muted); font-family: monospace;">#${u.id}</td>
                 <td>
                     <div style="font-weight:bold; font-size: 1.1rem;">${u.username}</div>
                     <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">${u.phone || 'No phone provided'}</div>
+                    <div style="font-size:0.85rem; color:#ef4444; margin-top:0.25rem; font-weight: bold;">Due Fees: ₹${parseFloat(u.due_fees || 0).toFixed(2)}</div>
                 </td>
                 <td>${vHtml}</td>
-                <td style="font-weight: bold; color: ${parseFloat(u.due_fees || 0) > 0 ? '#ef4444' : '#4ade80'};">₹${parseFloat(u.due_fees || 0).toFixed(2)}</td>
                 <td style="display:flex; flex-direction:column; gap:0.5rem;">
-                    <button onclick="setUserDues(${u.id}, '${u.username}', ${u.due_fees || 0})" style="background:#22c55e; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">Set Dues</button>
-                    <button onclick="deleteUser(${u.id}, '${u.username}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">Delete</button>
+                    <button onclick="setUserDues(${u.id}, '${u.username}', ${u.due_fees || 0})" style="background:#22c55e; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Set Dues</button>
+                    <button onclick="deleteUser(${u.id}, '${u.username}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
                 </td>
             </tr>
         `}).join('');
-    } catch (e) { 
-        console.error('Error loading users', e);
-        await showAlert('Error loading users: ' + e.message);
+    } catch (e) { console.error('Error loading users', e); }
+}
+
+let adminDriverCache = [];
+
+async function loadLots() {
+    const container = document.getElementById('lots-container');
+    try {
+        const lots = await apiCall('/lots');
+        // Cache users so we don't spam the endpoint per slot
+        adminDriverCache = await apiCall('/admin/users');
+
+        if (lots.length === 0) {
+            container.innerHTML = '<div style="background: rgba(30,41,59,0.5); padding: 2rem; border-radius: 12px; text-align: center; color: var(--text-muted); border: 1px dashed #475569;">No lots created yet. Use the form to the left.</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+
+        for (let lot of lots) {
+            const slots = await apiCall(`/lots/${lot.lot_id}/slots`);
+            const occRate = lot.total > 0 ? ((lot.total - lot.available_slots) / lot.total * 100).toFixed(0) : 0;
+            
+            const lotEl = document.createElement('div');
+            lotEl.style = "background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 2rem; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);";
+            
+            let slotsHtml = slots.map(s => {
+                const isLocked = s.status !== 'available';
+                
+                // User Context injected
+                let userContext = '';
+                if (s.driver_id) {
+                    const usr = adminDriverCache.find(u => u.id === s.driver_id);
+                    if (usr) {
+                        const veh = usr.vehicles.find(v => v.parked_slot === s.slot_number) || usr.vehicles[0]; // fallback to first vehicle if misaligned
+                        const entryTime = veh && veh.entry_time ? new Date(veh.entry_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown Time';
+                        userContext = `
+                            <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 0.8rem;">
+                                <div style="color: #93c5fd; font-weight: bold; margin-bottom: 2px;">U: ${usr.username}</div>
+                                <div style="color: var(--text-muted); display: flex; justify-content: space-between;">
+                                    <span>${veh ? veh.license_plate : 'Unknown'}</span>
+                                    <span style="color: #facc15;">Since ${entryTime}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                return `
+                <div style="display:flex; flex-direction:column; padding: 1rem; background: ${isLocked ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0,0,0,0.25)'}; border: 1px solid ${isLocked ? 'rgba(59, 130, 246, 0.3)' : 'transparent'}; border-radius: 8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 0.5rem;">
+                        <div style="display:flex; flex-direction:column;">
+                            <span style="font-family:monospace; font-size: 1.1rem; font-weight: bold;">Slot ${s.slot_number}</span>
+                        </div>
+                        <select onchange="updateSlotStatus(${s.id}, this.value)" style="border:none; padding: 0.2rem; border-radius: 4px; background: rgba(0,0,0,0.3); font-size:0.75rem; font-weight:bold; color:${!isLocked?'var(--primary)':'#ef4444'}">
+                            <option value="available" ${s.status==='available'?'selected':''}>AVAILABLE</option>
+                            <option value="occupied" ${s.status==='occupied'?'selected':''}>OCCUPIED</option>
+                            <option value="reserved" ${s.status==='reserved'?'selected':''}>RESERVED</option>
+                        </select>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Slot Type:</span>
+                        <select class="slot-type-select" onchange="updateSlotType(${s.id}, this.value)" ${isLocked ? 'disabled title="Cannot edit occupied slot"' : ''} style="${isLocked ? 'opacity:0.5; cursor:not-allowed;' : ''}; max-width: 80px; font-size: 0.8rem; padding: 0.1rem 0.4rem;">
+                            <option value="car" ${s.slot_type==='car'?'selected':''}>Car</option>
+                            <option value="bike" ${s.slot_type==='bike'?'selected':''}>Bike</option>
+                            <option value="lorry" ${s.slot_type==='lorry'?'selected':''}>Lorry</option>
+                        </select>
+                    </div>
+
+                    ${userContext}
+                </div>
+            `}).join('');
+
+            lotEl.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:1.5rem; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid #334155;">
+                    <div>
+                        <h4 style="font-size: 1.8rem; margin-bottom: 0.5rem; color: #f8fafc;">${lot.name}</h4>
+                        <p style="color:var(--text-muted); font-size: 0.95rem;">📍 ${lot.address}</p>
+                        <p style="color:var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">Total Slots: ${lot.total_slots}</p>
+                        <button onclick="deleteLot(${lot.lot_id})" class="btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color:#ef4444; font-size:0.75rem; cursor:pointer; margin-top:1rem; padding: 0.3rem 0.6rem; border-radius: 4px;">Trash Lot</button>
+                    </div>
+                    <div style="text-align: right; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Occupancy</div>
+                        <div style="font-size: 2.2rem; letter-spacing: -1px; font-weight: bold; color: ${occRate > 80 ? '#ef4444' : 'var(--primary)'}">${occRate}%</div>
+                    </div>
+                </div>
+                <div class="slot-types-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; border: none; padding-top: 0; margin-top: 0;">
+                    ${slotsHtml}
+                </div>
+            `;
+            container.appendChild(lotEl);
+        }
+    } catch (e) {
+        console.error('Failed to load lots', e);
     }
 }
 
-// Filter users table by search
-window.filterUsersTable = () => {
-    const searchTerm = document.getElementById('user-search').value.toLowerCase();
-    const rows = document.querySelectorAll('.user-row');
-    rows.forEach(row => {
-        const username = row.dataset.username;
-        if (username.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
+async function loadSessions() {
+    try {
+        const sessions = await apiCall('/admin/sessions');
+        const tbody = document.querySelector('#sessions-table tbody');
+        
+        if (sessions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding: 2rem;">No parking sessions logged across the network.</td></tr>`;
+            return;
         }
-    });
-};
+        
+        tbody.innerHTML = sessions.map(s => {
+            const statusBadge = s.status === 'active' 
+                ? `<span style="background:rgba(250, 204, 21, 0.2); color:#facc15; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block;">ACTIVE</span>`
+                : `<span style="background:rgba(34, 197, 94, 0.2); color:#4ade80; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block;">COMPLETED</span>`;
+                
+            const exTime = s.exit_time ? new Date(s.exit_time).toLocaleString() : '-';
+            
+            return `
+            <tr>
+                <td style="color:var(--text-muted); font-family: monospace;">#${s.id}</td>
+                <td style="font-weight: bold;">${s.username}</td>
+                <td>${s.license_plate} <span style="font-size:0.7rem; opacity: 0.7">(${s.vehicle_type})</span></td>
+                <td>${s.lot_name}</td>
+                <td style="font-family: monospace; font-weight: bold">${s.slot_number}</td>
+                <td style="font-weight: bold; color: #93c5fd;">${s.duration_hours || '-'}</td>
+                <td style="font-weight: bold; color: #22c55e;">${s.fee_charged !== null && s.fee_charged !== undefined ? '₹'+parseFloat(s.fee_charged).toFixed(2) : '-'}</td>
+                <td style="font-size: 0.85rem">${new Date(s.entry_time).toLocaleString()}</td>
+                <td style="font-size: 0.85rem; color: ${s.exit_time ? 'inherit' : 'var(--text-muted)'}">${exTime}</td>
+                <td>${statusBadge}</td>
+            </tr>
+        `}).join('');
+    } catch (e) {
+        console.error('Error loading sessions', e);
+    }
+}
 
 // ======== REPORTS ========
 async function loadReports() {
@@ -247,139 +353,6 @@ async function loadReports() {
     }
 }
 
-
-
-let adminDriverCache = [];
-
-async function loadLots() {
-    const container = document.getElementById('lots-container');
-    try {
-        const lots = await apiCall('/lots');
-        // Cache users so we don't spam the endpoint per slot
-        adminDriverCache = await apiCall('/admin/users');
-
-        if (lots.length === 0) {
-            container.innerHTML = '<div style="background: rgba(30,41,59,0.5); padding: 2rem; border-radius: 12px; text-align: center; color: var(--text-muted); border: 1px dashed #475569;">No lots created yet. Use the form to the left.</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-
-        for (let lot of lots) {
-            const slots = await apiCall(`/lots/${lot.lot_id}/slots`);
-            const occRate = lot.total > 0 ? ((lot.total - lot.available_slots) / lot.total * 100).toFixed(0) : 0;
-            
-            const lotEl = document.createElement('div');
-            lotEl.style = "background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 2rem; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);";
-            
-            let slotsHtml = slots.map(s => {
-                const isLocked = s.status !== 'available';
-                
-                // User Context injected
-                let userContext = '';
-                if (s.driver_id) {
-                    const usr = adminDriverCache.find(u => u.id === s.driver_id);
-                    if (usr) {
-                        const veh = usr.vehicles.find(v => v.parked_slot === s.slot_number) || usr.vehicles[0]; // fallback to first vehicle if misaligned
-                        const entryTime = veh && veh.entry_time ? new Date(veh.entry_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown Time';
-                        userContext = `
-                            <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 0.8rem;">
-                                <div style="color: #93c5fd; font-weight: bold; margin-bottom: 2px;">U: ${usr.username}</div>
-                                <div style="color: var(--text-muted); display: flex; justify-content: space-between;">
-                                    <span>${veh ? veh.license_plate : 'Unknown'}</span>
-                                    <span style="color: #facc15;">Since ${entryTime}</span>
-                                </div>
-                            </div>
-                        `;
-                    }
-                }
-
-                return `
-                <div style="display:flex; flex-direction:column; padding: 1rem; background: ${isLocked ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0,0,0,0.25)'}; border: 1px solid ${isLocked ? 'rgba(59, 130, 246, 0.3)' : 'transparent'}; border-radius: 8px;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 0.5rem;">
-                        <div style="display:flex; flex-direction:column;">
-                            <span style="font-family:monospace; font-size: 1.1rem; font-weight: bold;">Slot ${s.slot_number}</span>
-                        </div>
-                        <select onchange="updateSlotStatus(${s.id}, this.value)" style="border:none; padding: 0.2rem; border-radius: 4px; background: rgba(0,0,0,0.3); font-size:0.75rem; font-weight:bold; color:${!isLocked?'var(--primary)':'#ef4444'}">
-                            <option value="available" ${s.status==='available'?'selected':''}>AVAILABLE</option>
-                            <option value="occupied" ${s.status==='occupied'?'selected':''}>OCCUPIED</option>
-                            <option value="reserved" ${s.status==='reserved'?'selected':''}>RESERVED</option>
-                        </select>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Slot Type:</span>
-                        <select class="slot-type-select" onchange="updateSlotType(${s.id}, this.value)" ${isLocked ? 'disabled title="Cannot edit occupied slot"' : ''} style="${isLocked ? 'opacity:0.5; cursor:not-allowed;' : ''}; max-width: 80px; font-size: 0.8rem; padding: 0.1rem 0.4rem;">
-                            <option value="car" ${s.slot_type==='car'?'selected':''}>Car</option>
-                            <option value="bike" ${s.slot_type==='bike'?'selected':''}>Bike</option>
-                            <option value="lorry" ${s.slot_type==='lorry'?'selected':''}>Lorry</option>
-                        </select>
-                    </div>
-
-                    ${userContext}
-                </div>
-            `}).join('');
-
-            lotEl.innerHTML = `
-                <div style="display:flex; justify-content:space-between; margin-bottom:1.5rem; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid #334155;">
-                    <div>
-                        <h4 style="font-size: 1.8rem; margin-bottom: 0.5rem; color: #f8fafc;">${lot.name}</h4>
-                        <p style="color:var(--text-muted); font-size: 0.95rem;">📍 Loc: ${lot.address}</p>
-                        <p style="color:var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">Total Slots: ${lot.total_slots}</p>
-                        <button onclick="deleteLot(${lot.lot_id})" class="btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color:#ef4444; font-size:0.75rem; cursor:pointer; margin-top:1rem; padding: 0.3rem 0.6rem; border-radius: 4px;">Trash Lot</button>
-                    </div>
-                    <div style="text-align: right; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
-                        <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Occupancy</div>
-                        <div style="font-size: 2.2rem; letter-spacing: -1px; font-weight: bold; color: ${occRate > 80 ? '#ef4444' : 'var(--primary)'}">${occRate}%</div>
-                    </div>
-                </div>
-                <div class="slot-types-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; border: none; padding-top: 0; margin-top: 0;">
-                    ${slotsHtml}
-                </div>
-            `;
-            container.appendChild(lotEl);
-        }
-    } catch (e) {
-        console.error('Failed to load lots', e);
-    }
-}
-
-async function loadSessions() {
-    try {
-        const sessions = await apiCall('/admin/sessions');
-        const tbody = document.querySelector('#sessions-table tbody');
-        
-        if (sessions.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding: 2rem;">No parking sessions logged across the network.</td></tr>`;
-            return;
-        }
-        
-        tbody.innerHTML = sessions.map(s => {
-            const statusBadge = s.status === 'active' 
-                ? `<span style="background:rgba(250, 204, 21, 0.2); color:#facc15; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block;">ACTIVE</span>`
-                : `<span style="background:rgba(34, 197, 94, 0.2); color:#4ade80; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block;">COMPLETED</span>`;
-                
-            const exTime = s.exit_time ? new Date(s.exit_time).toLocaleString() : '-';
-            
-            return `
-            <tr>
-                <td style="color:var(--text-muted); font-family: monospace;">#${s.id}</td>
-                <td style="font-weight: bold;">${s.username}</td>
-                <td>${s.license_plate} <span style="font-size:0.7rem; opacity: 0.7">(${s.vehicle_type})</span></td>
-                <td>${s.lot_name}</td>
-                <td style="font-family: monospace; font-weight: bold">${s.slot_number}</td>
-                <td style="font-weight: bold; color: #93c5fd;">${s.duration_hours || '-'}</td>
-                <td style="font-weight: bold; color: #22c55e;">${s.fee_charged !== null && s.fee_charged !== undefined ? '₹'+parseFloat(s.fee_charged).toFixed(2) : '-'}</td>
-                <td style="font-size: 0.85rem">${new Date(s.entry_time).toLocaleString()}</td>
-                <td style="font-size: 0.85rem; color: ${s.exit_time ? 'inherit' : 'var(--text-muted)'}">${exTime}</td>
-                <td>${statusBadge}</td>
-            </tr>
-        `}).join('');
-    } catch (e) {
-        console.error('Error loading sessions', e);
-    }
-}
-
 window.viewSlotDetails = async (slotId) => {
     const sInfo = window[`slotInfo_${slotId}`];
     if (!sInfo || !sInfo.driver_id) return;
@@ -461,32 +434,18 @@ document.getElementById('create-lot-form').onsubmit = async (e) => {
     const a = document.getElementById('lot-address').value;
     const s = parseInt(document.getElementById('lot-slots').value);
     const p = parseFloat(document.getElementById('lot-price').value);
-    
-    const errEl = document.getElementById('admin-error');
-    const sucEl = document.getElementById('admin-success');
-    errEl.innerText = ''; sucEl.innerText = '';
 
     try {
         const res = await apiCall('/lots', 'POST', { name: n, address: a, total_slots: s, price_per_hour: p });
-        sucEl.innerText = res.message;
+        await showAlert('Parking lot created successfully!');
         document.getElementById('create-lot-form').reset();
         loadLots();
     } catch (err) {
-        errEl.innerText = err.message;
+        await showAlert('Error creating lot: ' + err.message);
     }
 };
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
-    // Update sidebar user info
-    const userInfoSidebar = document.getElementById('user-info-sidebar');
-    if (userInfoSidebar && currentUser) {
-        userInfoSidebar.innerHTML = `
-            <strong>Admin Panel</strong>
-            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">Logged in as:</div>
-            <strong style="color: #93c5fd; font-size: 0.95rem;">${currentUser.username}</strong>
-        `;
-    }
-    
     switchTab('dashboard'); // loads dashboard
 });
