@@ -2,3 +2,15 @@ node_modules/
 .DS_Store
 parking.db
 .env
+# Database Configuration
+# Update these with your actual MySQL database credentials
+
+# Option 1: Using CONNECTION STRING (Recommended)
+DATABASE_URL=mysql://amil:1234@localhost:3306/parking_system
+
+
+# Server Configuration
+PORT=3000
+
+# Application Environment
+NODE_ENV=development
